@@ -1,0 +1,8 @@
+﻿CREATE TABLE dbo.HealthCheck (
+    Id INT IDENTITY PRIMARY KEY,
+    Status VARCHAR(50) NOT NULL,
+    CreatedAt DATETIME2 DEFAULT SYSDATETIME()
+);
+
+INSERT INTO dbo.HealthCheck (Status)
+VALUES ('OK');
