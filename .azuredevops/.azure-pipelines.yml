@@ -1,0 +1,47 @@
+trigger:
+  - main
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  DB_NAME: InterviewDB
+  DB_USER: sa
+  DB_HOST: localhost
+  DB_PORT: 1433
+
+stages:
+- stage: DatabaseMigration
+  displayName: "Run SQL Migrations with Flyway"
+  jobs:
+  - job: FlywayMigration
+    displayName: "Flyway SQL Migration"
+    steps:
+
+    # 1️⃣ Checkout repo
+    - checkout: self
+
+    # 2️⃣ Start SQL Server using Docker
+    - script: |
+        docker run -d \
+          --name sqlserver \
+          -e "ACCEPT_EULA=Y" \
+          -e "MSSQL_SA_PASSWORD=$(DB_PASSWORD)" \
+          -p 1433:1433 \
+          mcr.microsoft.com/mssql/server:2022-latest
+      displayName: "Start SQL Server container"
+
+    # 3️⃣ Wait for SQL Server to be ready
+    - script: |
+        echo "Waiting for SQL Server to be ready..."
+        sleep 25
+      displayName: "Wait for SQL Server startup"
+
+    # 4️⃣ Run Flyway migrations
+    - script: |
+        docker run --rm \
+          -v $(Build.SourcesDirectory)/flyway/sql:/flyway/sql \
+          flyway/flyway:10 \
+          -url="jdbc:sqlserver://$(DB_HOST):$(DB_PORT);databaseName=$(DB_NAME);encrypt=true;trustServerCertificate=true" \
+          -user=$(DB_USER) \
+          -password=$(DB_PASSWORD) \
