@@ -2,12 +2,14 @@ trigger:
   - main
 
 pool:
-  vmImage: SelfHosted
+  name: SelfHosted
+  demands:
+    - docker
 
 variables:
   DB_NAME: InterviewDB
   DB_USER: sa
-  DB_HOST: localhost
+  DB_HOST: host.docker.internal
   DB_PORT: 1433
 
 stages:
