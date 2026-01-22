@@ -18,14 +18,22 @@ stages:
   jobs:
   - job: FlywayMigration
     displayName: "Flyway SQL Migration"
+    timeoutInMinutes: 60
     steps:
     - checkout: self
 
-    # 1) Start SQL Server container
+    # 1) Start SQL Server container (idempotent)
     - powershell: |
-        # Clean up if it already exists
-        docker rm -f sqlserver 2>$null
+        Write-Host "== Cleanup existing container (if any) =="
+        $exists = docker ps -a --format "{{.Names}}" | Select-String -SimpleMatch "sqlserver"
+        if ($exists) {
+          docker rm -f sqlserver | Out-Null
+          Write-Host "Removed existing 'sqlserver' container."
+        } else {
+          Write-Host "No existing 'sqlserver' container found."
+        }
 
+        Write-Host "== Start SQL Server container =="
         docker run -d --name sqlserver `
           -e "ACCEPT_EULA=Y" `
           -e "MSSQL_SA_PASSWORD=$(DB_PASSWORD)" `
@@ -35,14 +43,33 @@ stages:
         docker ps --filter "name=sqlserver"
       displayName: "Start SQL Server container"
 
-    # 2) Wait for SQL Server to be ready
+    # 2) Wait until SQL Server is READY (not just sleeping)
     - powershell: |
-        Write-Host "Waiting for SQL Server to be ready..."
-        Start-Sleep -Seconds 25
-      displayName: "Wait for SQL Server startup"
+        Write-Host "== Waiting for SQL Server readiness =="
+        $maxAttempts = 30
+        $attempt = 0
+
+        while ($attempt -lt $maxAttempts) {
+          $attempt++
+          $logs = docker logs sqlserver 2>$null
+
+          if ($logs -match "SQL Server is now ready for client connections") {
+            Write-Host "SQL Server is ready."
+            exit 0
+          }
+
+          Write-Host "Not ready yet... attempt $attempt/$maxAttempts"
+          Start-Sleep -Seconds 5
+        }
+
+        Write-Host "SQL Server did not become ready in time."
+        docker logs sqlserver
+        exit 1
+      displayName: "Wait for SQL Server ready"
 
     # 3) Run Flyway migrations
     - powershell: |
+        Write-Host "== Running Flyway migrations =="
         docker run --rm `
           -v "$(Build.SourcesDirectory)\flyway\sql:/flyway/sql" `
           flyway/flyway:10 `
@@ -52,10 +79,18 @@ stages:
           migrate
       displayName: "Run Flyway migrations"
 
-    # 4) (Optional) Show result and clean up
+    # 4) Show containers + cleanup (always runs)
     - powershell: |
-        Write-Host "Containers after migration:"
+        Write-Host "== Containers (post-run) =="
         docker ps -a
-        docker rm -f sqlserver 2>$null
-      displayName: "Cleanup SQL Server container"
+
+        Write-Host "== Cleanup SQL Server container =="
+        $exists = docker ps -a --format "{{.Names}}" | Select-String -SimpleMatch "sqlserver"
+        if ($exists) {
+          docker rm -f sqlserver | Out-Null
+          Write-Host "Removed 'sqlserver' container."
+        } else {
+          Write-Host "No 'sqlserver' container to remove."
+        }
+      displayName: "Cleanup"
       condition: always()
