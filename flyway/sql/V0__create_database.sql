@@ -1,0 +1,5 @@
+IF DB_ID('InterviewDB') IS NULL
+BEGIN
+    CREATE DATABASE InterviewDB;
+END
+GO
